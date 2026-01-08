@@ -11,7 +11,7 @@ This is a wrapper around `go build`. At its core, it repeatedly runs `go build` 
 
 multibuild is designed to be installed as a Go tool (Go 1.24+):
 
-	go get -tool github.com/rburchell/multibuild/cmd/multibuild
+	go get -tool github.com/rburchell/multibuild/cmd/multibuild@master
 
 And then you can build your binaries from within your module using `go tool multibuild`,
 which will build the current package for the configured targets.
