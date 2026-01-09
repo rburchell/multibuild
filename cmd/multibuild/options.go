@@ -60,21 +60,6 @@ func (this options) buildTargetList(targets []target) ([]target, error) {
 		return true
 	})
 
-	if dlog {
-		log.Printf("Includes:")
-		for _, filt := range this.Include {
-			log.Printf("- %s", filt)
-		}
-		log.Printf("Excludes:")
-		for _, filt := range this.Exclude {
-			log.Printf("- %s", filt)
-		}
-		log.Printf("Decided targets:")
-		for _, filt := range targets {
-			log.Printf("- %s", filt)
-		}
-	}
-
 	// Check includes still present
 	for _, inc := range this.Include {
 		found := false
