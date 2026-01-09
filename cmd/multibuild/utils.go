@@ -3,6 +3,17 @@
 // license that can be found in the LICENSE file.
 package main
 
+import (
+	"fmt"
+	"os"
+)
+
+func fatal(format string, args ...interface{}) {
+	format += "\n"
+	fmt.Fprintf(os.Stderr, format, args...)
+	os.Exit(1)
+}
+
 func mapSlice[T any, R any](in []T, fn func(T) R) []R {
 	out := make([]R, len(in))
 	for i, v := range in {

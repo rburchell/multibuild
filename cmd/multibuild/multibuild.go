@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,28 +99,28 @@ func determineTargetName(args []string) (string, error) {
 }
 
 func displayUsageAndExit(self string) {
-	fmt.Println(fmt.Sprintf("usage: %s [-o output] [build flags] [packages]", self))
-	fmt.Println("multibuild is a thin wrapper around 'go build'.")
-	fmt.Println("For documentation on multibuild's configuration, see https://github.com/rburchell/multibuild")
-	fmt.Println("Otherwise, run 'go help build' for command line flags.")
-	fmt.Println("")
-	fmt.Println("multibuild-specific options:")
-	fmt.Println("    -v: enable verbose logs during building. this will also imply `go build -v`")
-	fmt.Println("    --multibuild-configuration: display the multibuild configuration parsed from the package")
-	fmt.Println("    --multibuild-targets: list targets that will be built")
+	fmt.Fprintln(os.Stderr, fmt.Sprintf("usage: %s [-o output] [build flags] [packages]", self))
+	fmt.Fprintln(os.Stderr, "multibuild is a thin wrapper around 'go build'.")
+	fmt.Fprintln(os.Stderr, "For documentation on multibuild's configuration, see https://github.com/rburchell/multibuild")
+	fmt.Fprintln(os.Stderr, "Otherwise, run 'go help build' for command line flags.")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "multibuild-specific options:")
+	fmt.Fprintln(os.Stderr, "    -v: enable verbose logs during building. this will also imply `go build -v`")
+	fmt.Fprintln(os.Stderr, "    --multibuild-configuration: display the multibuild configuration parsed from the package")
+	fmt.Fprintln(os.Stderr, "    --multibuild-targets: list targets that will be built")
 	os.Exit(0)
 }
 
 func displayConfigAndExit(opts options) {
-	fmt.Printf("//go:multibuild:include=%s\n", strings.Join(mapSlice(opts.Include, func(f filter) string { return string(f) }), ","))
-	fmt.Printf("//go:multibuild:exclude=%s\n", strings.Join(mapSlice(opts.Exclude, func(f filter) string { return string(f) }), ","))
-	fmt.Printf("//go:multibuild:output=%s\n", opts.Output)
+	fmt.Fprintf(os.Stderr, "//go:multibuild:include=%s\n", strings.Join(mapSlice(opts.Include, func(f filter) string { return string(f) }), ","))
+	fmt.Fprintf(os.Stderr, "//go:multibuild:exclude=%s\n", strings.Join(mapSlice(opts.Exclude, func(f filter) string { return string(f) }), ","))
+	fmt.Fprintf(os.Stderr, "//go:multibuild:output=%s\n", opts.Output)
 	os.Exit(0)
 }
 
 func displayTargetsAndExit(targets []target) {
 	for _, target := range targets {
-		fmt.Println(target)
+		fmt.Fprintln(os.Stderr, target)
 	}
 	os.Exit(0)
 }
@@ -144,31 +143,31 @@ func main() {
 		case arg == "--multibuild-targets":
 			displayTargets = true
 		case strings.HasPrefix(arg, "--multibuild"):
-			log.Fatalf("multibuild: unrecognized argument %q", arg)
+			fatal("multibuild: unrecognized argument %q", arg)
 		}
 	}
 
 	output, err := determineTargetName(args)
 	if err != nil {
-		log.Fatalf("multibuild: failed to get target name: %s", err)
+		fatal("multibuild: failed to get target name: %s", err)
 	}
 
 	sources, err := sourcesList()
 	if err != nil {
-		log.Fatalf("multibuild: failed to discover sources: %s", err)
+		fatal("multibuild: failed to discover sources: %s", err)
 	}
 	opts, err := scanBuildDir(sources)
 	if err != nil {
-		log.Fatalf("multibuild: failed to scan sources: %s", err)
+		fatal("multibuild: failed to scan sources: %s", err)
 	}
 
 	targets, err := targetList()
 	if err != nil {
-		log.Fatalf("multibuild: failed to list targets: %s", err)
+		fatal("multibuild: failed to list targets: %s", err)
 	}
 	targets, err = opts.buildTargetList(targets)
 	if err != nil {
-		log.Fatalf("multibuild: failed to build target list: %s", err)
+		fatal("multibuild: failed to build target list: %s", err)
 	}
 
 	if displayConfig {
