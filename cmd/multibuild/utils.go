@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-func fatal(format string, args ...interface{}) {
+func fatal(format string, args ...any) {
 	format += "\n"
 	fmt.Fprintf(os.Stderr, format, args...)
 	os.Exit(1)

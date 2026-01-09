@@ -62,15 +62,15 @@ func targetList() ([]target, error) {
 
 // Returns the binary name/path that `go build` would produce.
 func determineTargetName(args []string) (string, error) {
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		arg := args[i]
 
 		if arg == "-o" && i+1 < len(args) {
 			return args[i+1], nil
 		}
 
-		if strings.HasPrefix(arg, "-o=") {
-			return strings.TrimPrefix(arg, "-o="), nil
+		if after, ok := strings.CutPrefix(arg, "-o="); ok {
+			return after, nil
 		}
 	}
 
@@ -99,7 +99,7 @@ func determineTargetName(args []string) (string, error) {
 }
 
 func displayUsageAndExit(self string) {
-	fmt.Fprintln(os.Stderr, fmt.Sprintf("usage: %s [-o output] [build flags] [packages]", self))
+	fmt.Fprintf(os.Stderr, "usage: %s [-o output] [build flags] [packages]\n", self)
 	fmt.Fprintln(os.Stderr, "multibuild is a thin wrapper around 'go build'.")
 	fmt.Fprintln(os.Stderr, "For documentation on multibuild's configuration, see https://github.com/rburchell/multibuild")
 	fmt.Fprintln(os.Stderr, "Otherwise, run 'go help build' for command line flags.")

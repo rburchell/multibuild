@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -62,13 +63,7 @@ func (this options) buildTargetList(targets []target) ([]target, error) {
 
 	// Check includes still present
 	for _, inc := range this.Include {
-		found := false
-		for _, t := range targets {
-			if inc.matches(t) {
-				found = true
-				break
-			}
-		}
+		found := slices.ContainsFunc(targets, inc.matches)
 		if !found {
 			return nil, fmt.Errorf("multibuild: required target %q was not found, or was excluded", inc)
 		}

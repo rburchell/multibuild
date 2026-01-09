@@ -5,6 +5,7 @@ package main
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -264,13 +265,7 @@ func TestScanBuildDir_ExcludeDefaultCGO(t *testing.T) {
 	// Unset CGO_ENABLED
 	os.Setenv("CGO_ENABLED", "0")
 	opts, _ := scanBuildDir([]string{file})
-	found := false
-	for _, x := range opts.Exclude {
-		if x == "android/*" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(opts.Exclude, "android/*")
 	if !found {
 		t.Errorf("expected android/* to be excluded when CGO_ENABLED=0, got excludes %v", opts.Exclude)
 	}
