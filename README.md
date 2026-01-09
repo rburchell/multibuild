@@ -20,7 +20,7 @@ which will build the current package for the configured targets.
 
 multibuild can be configured by comments in the source code of the package you're building, for example:
 
-```
+```go
 //go:multibuild:output=bin/${TARGET}-${GOOS}-${GOARCH}
 //go:multibuild:include=linux/*
 //go:multibuild:exclude=linux/ppc64,linux/ppc64le
@@ -40,7 +40,7 @@ applicable, depending on what your project is. Fortunately, this behaviour can b
 configured to suit your liking, by adding filters. For example, to build all Linux targets
 except 32-bit x86:
 
-```
+```go
 //go:multibuild:include=linux/*
 //go:multibuild:exclude=linux/386
 ```
@@ -159,7 +159,7 @@ and probably go a long way to making this a capable release tool.
 
 Something like this:
 
-```
+```go
 //go:multibuild:format=raw,tar.gz                # binary + archive
 //go:multibuild:embed=README.md                  # embeds in the archive
 //go:multibuild:embed=LICENSE.txt@doc/           # embeds in the archive, at a specified path.
