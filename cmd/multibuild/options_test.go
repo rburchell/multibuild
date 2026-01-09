@@ -282,7 +282,7 @@ func TestScanBuildDir_EmptyIncludeGetsAll(t *testing.T) {
 
 func TestScanBuildDir_FileOpenError(t *testing.T) {
 	_, err := scanBuildDir([]string{"/not/exist"})
-	if err == nil || !strings.Contains(err.Error(), "failed to open") {
+	if err == nil || !strings.Contains(err.Error(), "no such file or directory") {
 		t.Errorf("expected open failure, got %v", err)
 	}
 }
