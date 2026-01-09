@@ -98,7 +98,18 @@ func determineTargetName(args []string) (string, error) {
 }
 
 func main() {
+	self := os.Args[0]
 	args := os.Args[1:]
+
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			fmt.Println(fmt.Sprintf("usage: %s [-o output] [build flags] [packages]", self))
+			fmt.Println("multibuild is a thin wrapper around 'go build'.")
+			fmt.Println("For documentation on multibuild's configuration, see https://github.com/rburchell/multibuild")
+			fmt.Println("Otherwise, run 'go help build' for command line flags.")
+			os.Exit(0)
+		}
+	}
 
 	// If there's an explicit GOOS/GOARCH, pass through.
 	// We want to stay out of the way here.
