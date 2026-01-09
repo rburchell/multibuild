@@ -127,8 +127,14 @@ I want multibuild to be fairly focused. I like the premise of tools like Gorelea
 but I think that they try to do too much, and require too much hand holding.
 
 * I don't want to start generating changelogs.
-* I don't want to handle uploading, or downloading of binaries. This is up to you.
-* I don't want to think about things other than simple Go binaries built via `go build`.
+* I don't want to upload any binaries.
+* I don't want to send any notifications.
+* I don't want to run tests, or vet/lint checks, etc.
+* My sole focus is on simple Go binaries you generally work on via `go build`.
+
+At the end of the day, this is intended to be a build/package tool, and while I'm open
+to new ideas and contributions, I think the focus should stay on things towards that
+end of the spectrum.
 
 # Future
 
