@@ -1,2 +1,2 @@
-multibuild
-bin/
+cmd/multibuild/multibuild
+cmd/multibuild/bin
