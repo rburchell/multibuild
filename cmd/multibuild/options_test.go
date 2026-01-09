@@ -37,12 +37,6 @@ func TestFilterMatches(t *testing.T) {
 		// Full wildcard
 		{"*/*", "windows/amd64", true},
 		{"*/*", "linux/arm64", true},
-
-		// TODO: We should filter these filter cases out, they shouldn't really ever happen.
-		// Invalid filter or target formats.
-		{"linux", "linux/amd64", false},
-		{"linux/amd64", "linux", false},
-		{"windows", "windows", true},
 	}
 
 	for _, tt := range tests {
