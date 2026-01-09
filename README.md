@@ -90,12 +90,30 @@ The `GOARCH` placeholder expands to the `GOARCH` under build.
 
 Only a single `output` directive may be found in a package.
 
+# Differences to `go build`
+
+As multibuild is a wrapper around `go build`, most of the behaviour you will see come from there.
+This section is an attempt to document the areas where there are differences, and why.
+
+## Verbose
+
+multibuild adds its own verbose output indicating when different targets start/finish if you pass `-v`.
+
+## Output Prefixing
+
+Output from all builds is prefixed with `GOOS/GOARCH: `, e.g. instead of `go build saying stuff`,
+you will see `linux/arm64: go build saying stuff`.
+
+I think this is generally useful, and the only way to get sane output you can act on,
+so there is no configuration knob to disable it at this time.
+
 ## Cgo
 
 Since the primary purpose of `multibuild` is to cross compile, the use of cgo isn't really
 something I have thought about or focused on: I personally just switch it off and call it a day,
-so that my binaries run in more places. This is one place I have chosen to differ from `go build`:
-`multibuild` will force `CGO_ENABLED=0` by default.
+so that my binaries run in more places.
+
+So `multibuild` forces `CGO_ENABLED=0` by default.
 
 This choice might not be for everyone, though, so `multibuild` will not complain if you explicitly
 choose to enable it, e.g. by running `CGO_ENABLED=1 go tool multibuild`.

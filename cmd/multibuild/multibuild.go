@@ -8,9 +8,11 @@ package main
 //go:multibuild:output=bin/${TARGET}-${GOOS}-${GOARCH}
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -228,9 +230,20 @@ func main() {
 
 func runBuild(args []string, goos, goarch string) {
 	cmd := exec.Command("go", append([]string{"build"}, args...)...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 	cmd.Env = os.Environ()
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+
+	interceptor := func(source io.ReadCloser, dest io.Writer) {
+		scanner := bufio.NewScanner(source)
+		for scanner.Scan() {
+			line := fmt.Sprintf("%s/%s: %s", goos, goarch, scanner.Text())
+			fmt.Fprintln(dest, line)
+		}
+	}
+
+	go interceptor(stdout, os.Stdout)
+	go interceptor(stderr, os.Stderr)
 
 	if goos != "" {
 		cmd.Env = append(cmd.Env,
