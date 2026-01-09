@@ -151,19 +151,23 @@ Would allow running commands before a build (which might also cancel the build),
 This could in turn let people create workflows with vet/lint/test/run that the entire team would be
 able to use - across repos - without having to document what they need to run each time.
 
-One difficulty with this syntax is that it's not clear about ordering if you have multiple,
-and I think we'd want to allow multiple (at least eventually).
+I don't think I'd want to allow multiple commands, because then you have to deal with ordering
+them, and it's just a big mess. This comes too close to scope creeping into a task runner or
+script tool which seems ugly - so if you want multiple, just launch a script, I guess?
 
-We could require that ordering is specified by some lexicographically sorted identifier:
+You want to do different things depending on the host platform/arch though.. So:
 
 ```go
-//go:multibuild:pre@000=...
-//go:multibuild:pre@001=...
-//go:multibuild:pre@100=...
+//go:multibuild:pre@unix/*=somecommand.sh
+//go:multibuild:pre@windows/*=somecommand.exe
 ```
 
-One danger is that this comes dangerously close to scope creeping into a task runner or
-script tool which seems ugly.
+And if you have multiple platforms specified, the most exact match to your host is the one that is run.
+
+Hooks would run once (before/after all targets).
+
+Do we want to have some sort of handling of build failure?
+I'm thinking `post=` will only run if all targets succeed. Do we need a hook if they didn't?
 
 ## iOS / Android
 
