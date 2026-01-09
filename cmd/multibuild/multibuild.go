@@ -98,7 +98,7 @@ func determineTargetName(args []string) (string, error) {
 }
 
 func main() {
-	self := os.Args[0]
+	self := filepath.Base(os.Args[0])
 	args := os.Args[1:]
 
 	for _, arg := range args {

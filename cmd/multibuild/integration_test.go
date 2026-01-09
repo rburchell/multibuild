@@ -10,6 +10,49 @@ import (
 	"testing"
 )
 
+func TestHelp(t *testing.T) {
+	binTmp := t.TempDir()
+	bin := filepath.Join(binTmp, "multibuild")
+
+	cmd := exec.Command("go", "build", "-o", bin)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	expected := fmt.Sprintf(`usage: %s [-o output] [build flags] [packages]
+multibuild is a thin wrapper around 'go build'.
+For documentation on multibuild's configuration, see https://github.com/rburchell/multibuild
+Otherwise, run 'go help build' for command line flags.
+`, filepath.Base(bin))
+
+	for _, test := range []string{"-h", "--help"} {
+		t.Run(test, func(t *testing.T) {
+			cmd = exec.Command(bin, test)
+			cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("multibuild failed: %v\nOutput:\n%s", err, out)
+			}
+
+			if string(out) != expected {
+				t.Log("Expected:")
+				for _, line := range strings.Split(expected, "\n") {
+					t.Log(line)
+				}
+				t.Log("Got")
+				for _, line := range strings.Split(string(out), "\n") {
+					t.Log(line)
+				}
+				t.Fatalf("output mismatch")
+			}
+		})
+	}
+}
+
 func TestMultibuild(t *testing.T) {
 	binTmp := t.TempDir()
 	bin := filepath.Join(binTmp, "multibuild")
