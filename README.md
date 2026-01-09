@@ -140,6 +140,31 @@ end of the spectrum.
 
 Not set in stone, but some ideas for the future...
 
+## Hooks
+
+```go
+//go:multibuild:pre=somecommand --with-arguments
+//go:multibuild:post=somecommand --with-arguments
+```
+
+Would allow running commands before a build (which might also cancel the build), and after the build.
+This could in turn let people create workflows with vet/lint/test/run that the entire team would be
+able to use - across repos - without having to document what they need to run each time.
+
+One difficulty with this syntax is that it's not clear about ordering if you have multiple,
+and I think we'd want to allow multiple (at least eventually).
+
+We could require that ordering is specified by some lexicographically sorted identifier:
+
+```go
+//go:multibuild:pre@000=...
+//go:multibuild:pre@001=...
+//go:multibuild:pre@100=...
+```
+
+One danger is that this comes dangerously close to scope creeping into a task runner or
+script tool which seems ugly.
+
 ## iOS / Android
 
 Some platforms (particularly `android` and `ios`) require `CGO_ENABLED=1`
