@@ -104,6 +104,7 @@ func displayUsageAndExit(self string) {
 	fmt.Println("Otherwise, run 'go help build' for command line flags.")
 	fmt.Println("")
 	fmt.Println("multibuild-specific options:")
+	fmt.Println("    -v: enable verbose logs during building. this will also imply `go build -v`")
 	fmt.Println("    --multibuild-configuration: display the multibuild configuration parsed from the package")
 	fmt.Println("    --multibuild-targets: list targets that will be built")
 	os.Exit(0)
@@ -128,11 +129,14 @@ func main() {
 	args := os.Args[1:]
 	displayConfig := false
 	displayTargets := false
+	verbose := false
 
 	for _, arg := range args {
 		switch {
 		case arg == "-h" || arg == "--help":
 			displayUsageAndExit(self)
+		case arg == "-v":
+			verbose = true
 		case arg == "--multibuild-configuration":
 			displayConfig = true
 		case arg == "--multibuild-targets":
@@ -181,6 +185,8 @@ func main() {
 	}
 
 	wg := sync.WaitGroup{}
+	sem := make(chan struct{}, 4) // limit max parallel builds to save sanity...
+
 	formattedOutput := string(opts.Output)
 	formattedOutput = strings.ReplaceAll(formattedOutput, "${TARGET}", output)
 
@@ -199,10 +205,21 @@ func main() {
 		buildArgs := slices.Clone(args)
 		buildArgs = append(buildArgs, "-o", out)
 
-		wg.Add(1)
+		wg.Add(1) // acquire for global
 		go func(goos, goarch string, buildArgs []string) {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "%s/%s: waiting\n", goos, goarch)
+			}
+			sem <- struct{}{} // acquire for job
+			if verbose {
+				fmt.Fprintf(os.Stderr, "%s/%s: building\n", goos, goarch)
+			}
 			runBuild(buildArgs, goos, goarch)
-			wg.Done()
+			if verbose {
+				fmt.Fprintf(os.Stderr, "%s/%s: done\n", goos, goarch)
+			}
+			<-sem     // release for job
+			wg.Done() // release for global
 		}(goos, goarch, buildArgs)
 	}
 

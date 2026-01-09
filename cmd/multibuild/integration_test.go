@@ -28,9 +28,10 @@ For documentation on multibuild's configuration, see https://github.com/rburchel
 Otherwise, run 'go help build' for command line flags.
 
 multibuild-specific options:
+    -v: enable verbose logs during building. this will also imply %s
     --multibuild-configuration: display the multibuild configuration parsed from the package
     --multibuild-targets: list targets that will be built
-`, filepath.Base(bin))
+`, filepath.Base(bin), "`go build -v`" /* silly workaround for `s in a raw string literal */)
 
 	for _, test := range []string{"-h", "--help"} {
 		t.Run(test, func(t *testing.T) {
