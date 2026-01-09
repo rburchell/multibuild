@@ -97,26 +97,49 @@ func determineTargetName(args []string) (string, error) {
 	return filepath.Base(wd), nil
 }
 
+func displayUsageAndExit(self string) {
+	fmt.Println(fmt.Sprintf("usage: %s [-o output] [build flags] [packages]", self))
+	fmt.Println("multibuild is a thin wrapper around 'go build'.")
+	fmt.Println("For documentation on multibuild's configuration, see https://github.com/rburchell/multibuild")
+	fmt.Println("Otherwise, run 'go help build' for command line flags.")
+	fmt.Println("")
+	fmt.Println("multibuild-specific options:")
+	fmt.Println("    --multibuild-configuration: display the multibuild configuration parsed from the package")
+	fmt.Println("    --multibuild-targets: list targets that will be built")
+	os.Exit(0)
+}
+
+func displayConfigAndExit(opts options) {
+	fmt.Printf("//go:multibuild:include=%s\n", strings.Join(mapSlice(opts.Include, func(f filter) string { return string(f) }), ","))
+	fmt.Printf("//go:multibuild:exclude=%s\n", strings.Join(mapSlice(opts.Exclude, func(f filter) string { return string(f) }), ","))
+	fmt.Printf("//go:multibuild:output=%s\n", opts.Output)
+	os.Exit(0)
+}
+
+func displayTargetsAndExit(targets []target) {
+	for _, target := range targets {
+		fmt.Println(target)
+	}
+	os.Exit(0)
+}
+
 func main() {
 	self := filepath.Base(os.Args[0])
 	args := os.Args[1:]
+	displayConfig := false
+	displayTargets := false
 
 	for _, arg := range args {
-		if arg == "-h" || arg == "--help" {
-			fmt.Println(fmt.Sprintf("usage: %s [-o output] [build flags] [packages]", self))
-			fmt.Println("multibuild is a thin wrapper around 'go build'.")
-			fmt.Println("For documentation on multibuild's configuration, see https://github.com/rburchell/multibuild")
-			fmt.Println("Otherwise, run 'go help build' for command line flags.")
-			os.Exit(0)
+		switch {
+		case arg == "-h" || arg == "--help":
+			displayUsageAndExit(self)
+		case arg == "--multibuild-configuration":
+			displayConfig = true
+		case arg == "--multibuild-targets":
+			displayTargets = true
+		case strings.HasPrefix(arg, "--multibuild"):
+			log.Fatalf("multibuild: unrecognized argument %q", arg)
 		}
-	}
-
-	// If there's an explicit GOOS/GOARCH, pass through.
-	// We want to stay out of the way here.
-	// TODO: But this might be a confusing mistake to fall over if you set it in .bashrc etc..
-	if os.Getenv("GOOS") != "" || os.Getenv("GOARCH") != "" {
-		runBuild(args, "", "")
-		return
 	}
 
 	output, err := determineTargetName(args)
@@ -142,8 +165,22 @@ func main() {
 		log.Fatalf("multibuild: failed to build target list: %s", err)
 	}
 
-	wg := sync.WaitGroup{}
+	if displayConfig {
+		displayConfigAndExit(opts)
+	}
+	if displayTargets {
+		displayTargetsAndExit(targets)
+	}
 
+	// If there's an explicit GOOS/GOARCH, pass through.
+	// We want to stay out of the way here.
+	// TODO: But this might be a confusing mistake to fall over if you set it in .bashrc etc..
+	if os.Getenv("GOOS") != "" || os.Getenv("GOARCH") != "" {
+		runBuild(args, "", "")
+		return
+	}
+
+	wg := sync.WaitGroup{}
 	formattedOutput := string(opts.Output)
 	formattedOutput = strings.ReplaceAll(formattedOutput, "${TARGET}", output)
 

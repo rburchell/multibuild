@@ -26,6 +26,10 @@ func TestHelp(t *testing.T) {
 multibuild is a thin wrapper around 'go build'.
 For documentation on multibuild's configuration, see https://github.com/rburchell/multibuild
 Otherwise, run 'go help build' for command line flags.
+
+multibuild-specific options:
+    --multibuild-configuration: display the multibuild configuration parsed from the package
+    --multibuild-targets: list targets that will be built
 `, filepath.Base(bin))
 
 	for _, test := range []string{"-h", "--help"} {
@@ -85,9 +89,11 @@ func main() {
 `
 
 	type buildTest struct {
-		name   string
-		config string
-		expect []string
+		name             string
+		config           string
+		expectedBinaries []string
+		expectedConfig   string
+		expectedTargets  string
 	}
 
 	var tests = []buildTest{
@@ -95,29 +101,44 @@ func main() {
 			name: "include",
 			config: `//go:multibuild:include=linux/amd64,linux/arm64
 `,
-			expect: []string{
+			expectedBinaries: []string{
 				"${TARGET}-linux-amd64",
 				"${TARGET}-linux-arm64",
 			},
+			expectedConfig: `//go:multibuild:include=linux/amd64,linux/arm64
+//go:multibuild:exclude=android/*,ios/*
+//go:multibuild:output=${TARGET}-${GOOS}-${GOARCH}
+`,
+			expectedTargets: "linux/amd64\nlinux/arm64\n",
 		},
 		{
 			name: "include+exclude",
 			config: `//go:multibuild:include=*/arm64
 //go:multibuild:exclude=android/arm64,darwin/arm64,freebsd/arm64,ios/arm64,netbsd/arm64,openbsd/arm64,windows/arm64
 `,
-			expect: []string{
+			expectedBinaries: []string{
 				"${TARGET}-linux-arm64",
 			},
+			expectedConfig: `//go:multibuild:include=*/arm64
+//go:multibuild:exclude=android/arm64,darwin/arm64,freebsd/arm64,ios/arm64,netbsd/arm64,openbsd/arm64,windows/arm64,android/*,ios/*
+//go:multibuild:output=${TARGET}-${GOOS}-${GOARCH}
+`,
+			expectedTargets: "linux/arm64\n",
 		},
 		{
 			name: "output=",
 			config: `//go:multibuild:include=linux/amd64,linux/arm64
 //go:multibuild:output=bin/${TARGET}-hello-${GOOS}-world-${GOARCH}
 `,
-			expect: []string{
+			expectedBinaries: []string{
 				filepath.Join("bin", "${TARGET}-hello-linux-world-amd64"),
 				filepath.Join("bin", "${TARGET}-hello-linux-world-arm64"),
 			},
+			expectedConfig: `//go:multibuild:include=linux/amd64,linux/arm64
+//go:multibuild:exclude=android/*,ios/*
+//go:multibuild:output=bin/${TARGET}-hello-${GOOS}-world-${GOARCH}
+`,
+			expectedTargets: "linux/amd64\nlinux/arm64\n",
 		},
 	}
 
@@ -137,16 +158,36 @@ func main() {
 				t.Fatalf("failed to write %s: %v", baseModSource, err)
 			}
 
-			cmd := exec.Command(bin)
+			cmd := exec.Command(bin, "--multibuild-configuration")
 			cmd.Dir = testTmp
-			cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+			gotConfig, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("failed to read configuration: %v\nOutput:\n%s", err, gotConfig)
+			}
+			if string(gotConfig) != test.expectedConfig {
+				t.Fatalf("configuration mismatch:\ngot: %s\nwanted: %s\n", gotConfig, test.expectedConfig)
+			}
+
+			cmd = exec.Command(bin, "--multibuild-targets")
+			cmd.Dir = testTmp
+			gotTargets, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("failed to read targets: %v\nOutput:\n%s", err, gotTargets)
+			}
+			if string(gotTargets) != test.expectedTargets {
+				t.Fatalf("targets mismatch:\ngot: %s\nwanted: %s\n", gotTargets, test.expectedTargets)
+			}
+
+			cmd = exec.Command(bin)
+			cmd.Dir = testTmp
+			cmd.Env = append(os.Environ(), "CGO_ENABLED=0") // FIXME
 
 			out, err := cmd.CombinedOutput()
 			if err != nil {
-				t.Fatalf("multibuild failed: %v\nOutput:\n%s", err, out)
+				t.Fatalf("failed to multibuild: %v\nOutput:\n%s", err, out)
 			}
 
-			for _, want := range test.expect {
+			for _, want := range test.expectedBinaries {
 				want := strings.ReplaceAll(want, "${TARGET}", filepath.Base(testTmp))
 				if _, err := os.Stat(filepath.Join(testTmp, want)); err != nil {
 					t.Errorf("expected binary %q not found", want)
