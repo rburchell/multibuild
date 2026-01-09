@@ -90,6 +90,19 @@ The `GOARCH` placeholder expands to the `GOARCH` under build.
 
 Only a single `output` directive may be found in a package.
 
+## Cgo
+
+Since the primary purpose of `multibuild` is to cross compile, the use of cgo isn't really
+something I have thought about or focused on: I personally just switch it off and call it a day,
+so that my binaries run in more places. This is one place I have chosen to differ from `go build`:
+`multibuild` will force `CGO_ENABLED=0` by default.
+
+This choice might not be for everyone, though, so `multibuild` will not complain if you explicitly
+choose to enable it, e.g. by running `CGO_ENABLED=1 go tool multibuild`.
+
+There is presently no source code configuration for this - if such a thing would be useful, I would
+be interested to hear about it.
+
 # Non-goals
 
 I want multibuild to be fairly focused. I like the premise of tools like Goreleaser,

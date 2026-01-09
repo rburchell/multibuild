@@ -183,6 +183,24 @@ func runBuild(args []string, goos, goarch string) {
 			"GOOS="+goos,
 			"GOARCH="+goarch,
 		)
+
+		// multibuild is primarily a tool for cross compilation:
+		// making a binary in one place, that will run in many other places.
+		//
+		// Building binaries that have libc dependencies by default (if you use e.g. 'net')
+		// is suboptimal for this case, at best, given the binary won't be as portable:
+		// On Linux, a libc dependency will often render a binary built on one machine
+		// unusable on another machine due to glibc version differences, for example.
+		//
+		// Also, if your environment has a broken toolchain of some kind
+		// (and thus, cgo won't work at all), see for example #2, this leads to a large
+		// amount of unhelpful confusion.
+		//
+		// So, my executive decision is that we'll turn CGO_ENABLED off unless you explicitly turn it on.
+		_, hasCgo := os.LookupEnv("CGO_ENABLED")
+		if !hasCgo {
+			cmd.Env = append(cmd.Env, "CGO_ENABLED=0")
+		}
 	}
 
 	if err := cmd.Run(); err != nil {
