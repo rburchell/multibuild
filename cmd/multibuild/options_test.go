@@ -175,6 +175,12 @@ func TestScanBuildPath(t *testing.T) {
 			want:      options{},
 			wantError: true,
 		},
+		{
+			name:      "invalid filter",
+			input:     `//go:multibuild:include=linux/amd*`,
+			want:      options{},
+			wantError: true,
+		},
 	}
 
 	equalOptions := func(a, b options) bool {
@@ -419,6 +425,98 @@ func TestValidateTemplate(t *testing.T) {
 			// Successful result must preserve input
 			if string(out) != tt.input {
 				t.Fatalf("output mismatch: got %q, want %q", out, tt.input)
+			}
+		})
+	}
+}
+
+func TestValidateFilters_Valid(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want []filter
+	}{
+		{
+			name: "single entry",
+			in:   "linux/amd64",
+			want: []filter{filter("linux/amd64")},
+		},
+		{
+			name: "multiple entries",
+			in:   "linux/amd64,darwin/arm64",
+			want: []filter{
+				filter("linux/amd64"),
+				filter("darwin/arm64"),
+			},
+		},
+		{
+			name: "wildcard os",
+			in:   "*/amd64",
+			want: []filter{filter("*/amd64")},
+		},
+		{
+			name: "wildcard arch",
+			in:   "linux/*",
+			want: []filter{filter("linux/*")},
+		},
+		{
+			name: "both wildcards",
+			in:   "*/*",
+			want: []filter{filter("*/*")},
+		},
+		{
+			name: "mixed wildcards",
+			in:   "linux/amd64,*/arm64",
+			want: []filter{
+				filter("linux/amd64"),
+				filter("*/arm64"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := validateFilterString(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("len mismatch: got %d want %d", len(got), len(tt.want))
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("entry %d: got %+v want %+v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestValidateFilters_Invalid(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+	}{
+		{"empty", ""},
+		{"missing slash", "linuxamd64"},
+		{"missing os", "/amd64"},
+		{"missing arch", "linux/"},
+		{"double slash", "linux//amd64"},
+		{"leading comma", ",linux/amd64"},
+		{"trailing comma", "linux/amd64,"},
+		{"double comma", "linux/amd64,,darwin/arm64"},
+		{"unexpected char", "linux/amd$64"},
+		{"wildcard partial os", "*nix/amd64"},
+		{"wildcard partial arch", "linux/amd*"},
+		{"wildcard mixed os", "l*/amd64"},
+		{"wildcard mixed arch", "linux/*64"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := validateFilterString(tt.in)
+			if err == nil {
+				t.Fatalf("expected error for %q", tt.in)
 			}
 		})
 	}

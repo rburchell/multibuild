@@ -175,6 +175,84 @@ func validateTemplate(s string) (outputTemplate, error) {
 	return outputTemplate(s), nil
 }
 
+func validateFilterString(s string) ([]filter, error) {
+	isAlphaNum := func(b byte) bool {
+		return (b >= 'a' && b <= 'z') ||
+			(b >= 'A' && b <= 'Z') ||
+			(b >= '0' && b <= '9')
+	}
+
+	var out []filter
+
+	i := 0
+	for i < len(s) {
+		start := i
+
+		// parse GOOS
+		osStart := i
+		if i < len(s) {
+			if s[i] == '*' {
+				i++
+			} else {
+				for i < len(s) && isAlphaNum(s[i]) {
+					i++
+				}
+			}
+		}
+		if osStart == i {
+			return nil, fmt.Errorf("at %d: expected GOOS", i)
+		}
+		if i >= len(s) || s[i] != '/' {
+			if i < len(s) {
+				return nil, fmt.Errorf("at %d: unexpected character: %c", i, s[i])
+			}
+			return nil, fmt.Errorf("at %d: expected '/'", i)
+		}
+		goos := s[osStart:i]
+		i++ // skip '/'
+
+		// parse GOARCH
+		archStart := i
+		if i < len(s) {
+			if s[i] == '*' {
+				i++
+			} else {
+				for i < len(s) && isAlphaNum(s[i]) {
+					i++
+				}
+			}
+		}
+		if archStart == i {
+			return nil, fmt.Errorf("at %d: expected GOARCH", i)
+		}
+		goarch := s[archStart:i]
+
+		out = append(out, filter(fmt.Sprintf("%s/%s", goos, goarch)))
+
+		// end or comma
+		if i == len(s) {
+			break
+		}
+
+		if s[i] != ',' {
+			return nil, fmt.Errorf("at %d: unexpected character: %c", i, s[i])
+		}
+		i++ // skip ','
+
+		if i == len(s) {
+			return nil, fmt.Errorf("at %d: trailing comma", i-1)
+		}
+
+		_ = start
+	}
+
+	if len(out) == 0 {
+		return nil, fmt.Errorf("empty filter list")
+	}
+
+	return out, nil
+}
+
 // Reads from 'io' on behalf of a path, and returns parsed options.
 func scanBuildPath(reader io.Reader, path string) (options, error) {
 	var opts options
@@ -204,18 +282,22 @@ func scanBuildPath(reader io.Reader, path string) (options, error) {
 			if dlog {
 				log.Printf("Found include: %s:%d: %s", path, i, line)
 			}
-			rest := strings.Split(strings.TrimPrefix(line, "//go:multibuild:include="), ",")
-			for _, v := range rest {
-				opts.Include = append(opts.Include, filter(v))
+			rest := strings.TrimPrefix(line, "//go:multibuild:include=")
+			filters, err := validateFilterString(rest)
+			if err != nil {
+				return options{}, fmt.Errorf("%s:%d: go:multibuild:include=%s is invalid: %s", path, i, rest, err)
 			}
+			opts.Include = filters
 		} else if strings.HasPrefix(line, "//go:multibuild:exclude=") {
 			if dlog {
 				log.Printf("Found exclude: %s:%d: %s", path, i, line)
 			}
-			rest := strings.Split(strings.TrimPrefix(line, "//go:multibuild:exclude="), ",")
-			for _, v := range rest {
-				opts.Exclude = append(opts.Exclude, filter(v))
+			rest := strings.TrimPrefix(line, "//go:multibuild:exclude=")
+			filters, err := validateFilterString(rest)
+			if err != nil {
+				return options{}, fmt.Errorf("%s:%d: go:multibuild:exclude=%s is invalid: %s", path, i, rest, err)
 			}
+			opts.Exclude = filters
 		} else {
 			return options{}, fmt.Errorf("%s:%d: bad go:multibuild instruction: %q", path, i, line)
 		}
