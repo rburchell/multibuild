@@ -180,7 +180,6 @@ func main() {
 
 			cmd = exec.Command(bin)
 			cmd.Dir = testTmp
-			cmd.Env = append(os.Environ(), "CGO_ENABLED=0") // FIXME
 
 			out, err := cmd.CombinedOutput()
 			if err != nil {
