@@ -16,15 +16,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 )
 
 // Discovers all source files for this package.
 // This is smarter than Walk() looking for *.go, because it will obey build constraints.
-func sourcesList() ([]string, error) {
-	cmd := exec.Command("go", "list", "-compiled", "-json=CompiledGoFiles")
+func sourcesList(packagePath string) ([]string, error) {
+	cmd := exec.Command("go", "list", "-compiled", "-json=CompiledGoFiles", packagePath)
+
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = os.Stderr
@@ -38,6 +38,13 @@ func sourcesList() ([]string, error) {
 	}
 	if err := json.Unmarshal(buf.Bytes(), &v); err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+
+	// We must prepend packagePath to each of the paths to scan, so that
+	// we can actually find the paths in the case where we are building
+	// a package from an unexpected location.
+	for idx, p := range v.CompiledGoFiles {
+		v.CompiledGoFiles[idx] = filepath.Join(packagePath, p)
 	}
 
 	return v.CompiledGoFiles, nil
@@ -58,44 +65,6 @@ func targetList() ([]target, error) {
 	return mapSlice(lines, func(str string) target {
 		return target(str)
 	}), nil
-}
-
-// Returns the binary name/path that `go build` would produce.
-func determineTargetName(args []string) (string, error) {
-	for i := range args {
-		arg := args[i]
-
-		if arg == "-o" && i+1 < len(args) {
-			return args[i+1], nil
-		}
-
-		if after, ok := strings.CutPrefix(arg, "-o="); ok {
-			return after, nil
-		}
-	}
-
-	var nonflags []string
-	for _, arg := range args {
-		if !strings.HasPrefix(arg, "-") {
-			nonflags = append(nonflags, arg)
-		}
-	}
-
-	if len(nonflags) == 1 {
-		target := nonflags[0]
-
-		if strings.HasSuffix(target, ".go") {
-			return strings.TrimSuffix(filepath.Base(target), ".go"), nil
-		}
-
-		return filepath.Base(target), nil
-	}
-
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Base(wd), nil
 }
 
 func displayUsageAndExit(self string) {
@@ -126,14 +95,25 @@ func displayTargetsAndExit(targets []target) {
 }
 
 func main() {
-	self := filepath.Base(os.Args[0])
-	args := os.Args[1:]
+	self := filepath.Base(os.Args[0]) // current binary name
+	args := os.Args[1:]               // remaining args
+	expectOutput := false             // seen -o, waiting for the rest
+	output := ""                      // -o or -o=
+	var nonflags []string             // non-flag arguments
 	displayConfig := false
 	displayTargets := false
 	verbose := false
 
 	for _, arg := range args {
 		switch {
+		case expectOutput:
+			output = arg
+			expectOutput = false
+		case arg == "-o":
+			expectOutput = true
+		case strings.HasPrefix(arg, "-o="):
+			output = strings.TrimPrefix(arg, "-o=")
+
 		case arg == "-h" || arg == "--help":
 			displayUsageAndExit(self)
 		case arg == "-v":
@@ -144,18 +124,59 @@ func main() {
 			displayTargets = true
 		case strings.HasPrefix(arg, "--multibuild"):
 			fatal("multibuild: unrecognized argument %q", arg)
+		case !strings.HasPrefix(arg, "-"):
+			nonflags = append(nonflags, arg)
 		}
 	}
 
-	output, err := determineTargetName(args)
-	if err != nil {
-		fatal("multibuild: failed to get target name: %s", err)
+	var sources []string
+	packagePath := "" // the path being built
+	if output == "" {
+		switch len(nonflags) {
+		case 0:
+			// implicit case: multibuild on the current dir -> multibuild .
+			packagePath = "."
+			wd, err := os.Getwd()
+			if err != nil {
+				fatal("multibuild: failed to get cwd: %s", err)
+			}
+			output = filepath.Base(wd)
+		case 1:
+			t := nonflags[0]
+			if strings.HasSuffix(t, ".go") {
+				// multibuild cmd/foo.go
+				packagePath = filepath.Dir(t)
+				output = strings.TrimSuffix(filepath.Base(t), ".go")
+				sources = append(sources, t)
+			} else {
+				// multibuild cmd/foo
+				packagePath = t
+				output = filepath.Base(t)
+			}
+		default:
+			// For now, I'm cowardly refusing to handle this.
+			// I think we need to refactor some to handle two cases:
+			// - specifying a list of .go sources in a single ultimate package
+			// - specifying a list of packages
+			//
+			// The former is handled quite easily I think, the latter will
+			// require some additional thought and handling, as it's essentially
+			// another level of looping on top of what we have now.
+			//
+			// We will need to discover sources for each package, scan independently,
+			// and build independently.
+			fatal("multibuild: cannot build multiple packages")
+		}
 	}
 
-	sources, err := sourcesList()
-	if err != nil {
-		fatal("multibuild: failed to discover sources: %s", err)
+	if len(sources) == 0 {
+		var err error
+		sources, err = sourcesList(packagePath)
+		if err != nil {
+			fatal("multibuild: failed to discover sources: %s", err)
+		}
 	}
+
 	opts, err := scanBuildDir(sources)
 	if err != nil {
 		fatal("multibuild: failed to scan sources: %s", err)
@@ -203,8 +224,8 @@ func main() {
 			out += ".exe"
 		}
 
-		buildArgs := slices.Clone(args)
-		buildArgs = append(buildArgs, "-o", out)
+		buildArgs := []string{"-o", out}
+		buildArgs = append(buildArgs, args...)
 
 		wg.Add(1) // acquire for global
 		go func(goos, goarch string, buildArgs []string) {

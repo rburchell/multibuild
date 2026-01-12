@@ -17,7 +17,6 @@ func TestHelp(t *testing.T) {
 	cmd := exec.Command("go", "build", "-o", bin)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("build failed: %v", err)
 	}
@@ -36,7 +35,6 @@ multibuild-specific options:
 	for _, test := range []string{"-h", "--help"} {
 		t.Run(test, func(t *testing.T) {
 			cmd = exec.Command(bin, test)
-			cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 
 			out, err := cmd.CombinedOutput()
 			if err != nil {
@@ -58,14 +56,13 @@ multibuild-specific options:
 	}
 }
 
-func TestMultibuild(t *testing.T) {
+func TestMultibuildWithConfiguration(t *testing.T) {
 	binTmp := t.TempDir()
 	bin := filepath.Join(binTmp, "multibuild")
 
 	cmd := exec.Command("go", "build", "-o", bin)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("build failed: %v", err)
 	}
@@ -191,6 +188,176 @@ func main() {
 				want := strings.ReplaceAll(want, "${TARGET}", filepath.Base(testTmp))
 				if _, err := os.Stat(filepath.Join(testTmp, want)); err != nil {
 					t.Errorf("expected binary %q not found", want)
+				}
+			}
+		})
+	}
+}
+
+func TestMultibuildDifferentStyles(t *testing.T) {
+	type testCase struct {
+		name              string
+		numPackages       int
+		numBinariesPerPkg int
+		runDir            string
+		args              []string
+		expectErr         bool
+		expectedBinaries  []string
+	}
+
+	goos := runtime.GOOS
+	goarch := runtime.GOARCH
+
+	// TODO: A little too much magic generation in this test, but unsure how else to structure it.
+	// TODO: We presently only test building inside a single module. That's probably OK, or do we need to test more?
+	// TODO: We don't have tests to cover multiple source files that aren't binaries, and we should.
+	testCases := []testCase{
+		{
+			// tests "multibuild" with no arguments should produce binaries
+			name:              "build in source dir",
+			numPackages:       1,
+			numBinariesPerPkg: 1,
+			runDir:            "pkg1",
+			args:              []string{},
+			expectErr:         false,
+			expectedBinaries: []string{
+				fmt.Sprintf("pkg1-%s-%s", goos, goarch),
+			},
+		},
+		{
+			// tests "multibuild pkg/" should produce binaries
+			name:              "build via path/",
+			numPackages:       1,
+			numBinariesPerPkg: 1,
+			runDir:            ".",
+			args:              []string{"./pkg1"},
+			expectErr:         false,
+			expectedBinaries: []string{
+				fmt.Sprintf("pkg1-%s-%s", goos, goarch),
+			},
+		},
+		{
+			// tests "multibuild pkg/main1.go" should produce binaries
+			name:              "build via single .go file",
+			numPackages:       1,
+			numBinariesPerPkg: 1,
+			runDir:            ".",
+			args:              []string{"pkg1/main1.go"},
+			expectErr:         false,
+			expectedBinaries: []string{
+				fmt.Sprintf("pkg1-%s-%s", goos, goarch),
+			},
+		},
+		{
+			// tests that currently, building two binaries should fail
+			name:              "build two binaries by file",
+			numPackages:       1,
+			numBinariesPerPkg: 2,
+			runDir:            ".",
+			args:              []string{"pkg1/main1.go", "pkg1/main2.go"},
+			expectErr:         true,
+			expectedBinaries:  []string{},
+		},
+		{
+			// tests that currently, building two packages should fail
+			name:              "build two packages by path/",
+			numPackages:       2,
+			numBinariesPerPkg: 1,
+			runDir:            ".",
+			args:              []string{"pkg1", "pkg2"},
+			expectErr:         true,
+			expectedBinaries:  []string{},
+		},
+	}
+
+	tmpRoot := t.TempDir()
+	bin := filepath.Join(tmpRoot, "multibuild")
+
+	cmd := exec.Command("go", "build", "-o", bin)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup packages and binaries
+			gover := runtime.Version() // "go1.24..."
+			if gover[0:2] != "go" {    // check for, and skip the "go" prefix
+				t.Fatalf("unexpected go version: %s", gover)
+			}
+			gover = gover[2:]
+			baseMod := fmt.Sprintf("module %s\n\ngo %s\n", "testmod", gover)
+			if err := os.WriteFile(filepath.Join(tmpRoot, "go.mod"), []byte(baseMod), 0644); err != nil {
+				t.Fatalf("failed to write go.mod: %v", err)
+			}
+
+			for p := 1; p <= tc.numPackages; p++ {
+				pkgDir := filepath.Join(tmpRoot, fmt.Sprintf("pkg%d", p))
+				os.RemoveAll(pkgDir)
+
+				if err := os.Mkdir(pkgDir, 0755); err != nil {
+					t.Fatalf("failed to mkdir: %v", err)
+				}
+				for b := 1; b <= tc.numBinariesPerPkg; b++ {
+					mainSource := fmt.Sprintf(`package main
+import "fmt"
+func main() { fmt.Println("Hello from main%d in pkg%d") }
+`, b, p)
+
+					mainPath := filepath.Join(pkgDir, fmt.Sprintf("main%d.go", b))
+					if err := os.WriteFile(mainPath, []byte(mainSource), 0644); err != nil {
+						t.Fatalf("failed to write %s: %v", mainPath, err)
+					}
+					// Add multibuild config to the first file in each package
+					if b == 1 {
+						config := `//go:multibuild:include=` + goos + `/` + goarch + "\n"
+						config += "//go:multibuild:output=${TARGET}-${GOOS}-${GOARCH}\n"
+						buf, err := os.ReadFile(mainPath)
+						if err != nil {
+							t.Fatalf("failed to read file to inject config")
+						}
+						if err := os.WriteFile(mainPath, []byte(config+string(buf)), 0644); err != nil {
+							t.Fatalf("failed to write config: %v", err)
+						}
+					}
+				}
+			}
+
+			var runDir string
+			if tc.runDir == "." {
+				runDir = tmpRoot
+			} else {
+				runDir = filepath.Join(tmpRoot, tc.runDir)
+			}
+
+			cmd := exec.Command(bin, tc.args...)
+			cmd.Dir = runDir
+			out, err := cmd.CombinedOutput()
+
+			if tc.expectErr {
+				if err == nil {
+					t.Fatalf("expected error, got success:\nOutput:\n%s", string(out))
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("expected success, got error: %s\nOutput:\n%s", err, string(out))
+				}
+
+				if err != nil {
+					t.Fatalf("expected success, got error: %v\nOutput:\n%s", err, string(out))
+				}
+				for _, binRel := range tc.expectedBinaries {
+					var binPath string
+					if tc.runDir == "." {
+						binPath = filepath.Join(tmpRoot, binRel)
+					} else {
+						binPath = filepath.Join(runDir, binRel)
+					}
+					if _, err := os.Stat(binPath); err != nil {
+						t.Errorf("expected binary %q not found", binPath)
+					}
 				}
 			}
 		})
