@@ -140,6 +140,24 @@ end of the spectrum.
 
 Not set in stone, but some ideas for the future...
 
+## Dependencies
+
+Not often, but sometimes, I have a binary that depends on another binary being built.
+For example, when embedding a client binary inside a server binary, or for one tool
+to use another.
+
+I think we can handle this:
+
+``` go
+// In the above client/server case, the client would set this:
+//go:multibuild:after=../cmd/server       # is built after the current multibuild
+// And the server would set this:
+//go:multibuild:before=../cmd/client      # is built before the current multibuild
+```
+
+Then running builds in either client or server would always ensure builds of the
+dependencies were also rebuilt at the appropriate time.
+
 ## iOS / Android
 
 Some platforms (particularly `android` and `ios`) require `CGO_ENABLED=1`
