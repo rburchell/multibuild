@@ -43,11 +43,11 @@ multibuild-specific options:
 
 			if string(out) != expected {
 				t.Log("Expected:")
-				for _, line := range strings.Split(expected, "\n") {
+				for line := range strings.SplitSeq(expected, "\n") {
 					t.Log(line)
 				}
 				t.Log("Got")
-				for _, line := range strings.Split(string(out), "\n") {
+				for line := range strings.SplitSeq(string(out), "\n") {
 					t.Log(line)
 				}
 				t.Fatalf("output mismatch")
