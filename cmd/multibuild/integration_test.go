@@ -345,9 +345,6 @@ func main() { fmt.Println("Hello from main%d in pkg%d") }
 					t.Fatalf("expected success, got error: %s\nOutput:\n%s", err, string(out))
 				}
 
-				if err != nil {
-					t.Fatalf("expected success, got error: %v\nOutput:\n%s", err, string(out))
-				}
 				for _, binRel := range tc.expectedBinaries {
 					var binPath string
 					if tc.runDir == "." {
