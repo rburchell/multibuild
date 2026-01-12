@@ -2,10 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// A simplistic tool to build Go binaries for multiple platforms.
 package main
-
-//go:multibuild:output=bin/${TARGET}-${GOOS}-${GOARCH}
 
 import (
 	"bufio"
@@ -67,111 +64,12 @@ func targetList() ([]target, error) {
 	}), nil
 }
 
-func displayUsageAndExit(self string) {
-	fmt.Fprintf(os.Stderr, "usage: %s [-o output] [build flags] [packages]\n", self)
-	fmt.Fprintln(os.Stderr, "multibuild is a thin wrapper around 'go build'.")
-	fmt.Fprintln(os.Stderr, "For documentation on multibuild's configuration, see https://github.com/rburchell/multibuild")
-	fmt.Fprintln(os.Stderr, "Otherwise, run 'go help build' for command line flags.")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "multibuild-specific options:")
-	fmt.Fprintln(os.Stderr, "    -v: enable verbose logs during building. this will also imply `go build -v`")
-	fmt.Fprintln(os.Stderr, "    --multibuild-configuration: display the multibuild configuration parsed from the package")
-	fmt.Fprintln(os.Stderr, "    --multibuild-targets: list targets that will be built")
-	os.Exit(0)
-}
-
-func displayConfigAndExit(opts options) {
-	fmt.Fprintf(os.Stderr, "//go:multibuild:include=%s\n", strings.Join(mapSlice(opts.Include, func(f filter) string { return string(f) }), ","))
-	fmt.Fprintf(os.Stderr, "//go:multibuild:exclude=%s\n", strings.Join(mapSlice(opts.Exclude, func(f filter) string { return string(f) }), ","))
-	fmt.Fprintf(os.Stderr, "//go:multibuild:output=%s\n", opts.Output)
-	os.Exit(0)
-}
-
-func displayTargetsAndExit(targets []target) {
-	for _, target := range targets {
-		fmt.Fprintln(os.Stderr, target)
-	}
-	os.Exit(0)
-}
-
-func main() {
-	self := filepath.Base(os.Args[0]) // current binary name
-	args := os.Args[1:]               // remaining args
-	expectOutput := false             // seen -o, waiting for the rest
-	output := ""                      // -o or -o=
-	var nonflags []string             // non-flag arguments
-	displayConfig := false
-	displayTargets := false
-	verbose := false
-
-	for _, arg := range args {
-		switch {
-		case expectOutput:
-			output = arg
-			expectOutput = false
-		case arg == "-o":
-			expectOutput = true
-		case strings.HasPrefix(arg, "-o="):
-			output = strings.TrimPrefix(arg, "-o=")
-
-		case arg == "-h" || arg == "--help":
-			displayUsageAndExit(self)
-		case arg == "-v":
-			verbose = true
-		case arg == "--multibuild-configuration":
-			displayConfig = true
-		case arg == "--multibuild-targets":
-			displayTargets = true
-		case strings.HasPrefix(arg, "--multibuild"):
-			fatal("multibuild: unrecognized argument %q", arg)
-		case !strings.HasPrefix(arg, "-"):
-			nonflags = append(nonflags, arg)
-		}
-	}
-
-	var sources []string
-	packagePath := "" // the path being built
-	if output == "" {
-		switch len(nonflags) {
-		case 0:
-			// implicit case: multibuild on the current dir -> multibuild .
-			packagePath = "."
-			wd, err := os.Getwd()
-			if err != nil {
-				fatal("multibuild: failed to get cwd: %s", err)
-			}
-			output = filepath.Base(wd)
-		case 1:
-			t := nonflags[0]
-			if strings.HasSuffix(t, ".go") {
-				// multibuild cmd/foo.go
-				packagePath = filepath.Dir(t)
-				output = strings.TrimSuffix(filepath.Base(t), ".go")
-				sources = append(sources, t)
-			} else {
-				// multibuild cmd/foo
-				packagePath = t
-				output = filepath.Base(t)
-			}
-		default:
-			// For now, I'm cowardly refusing to handle this.
-			// I think we need to refactor some to handle two cases:
-			// - specifying a list of .go sources in a single ultimate package
-			// - specifying a list of packages
-			//
-			// The former is handled quite easily I think, the latter will
-			// require some additional thought and handling, as it's essentially
-			// another level of looping on top of what we have now.
-			//
-			// We will need to discover sources for each package, scan independently,
-			// and build independently.
-			fatal("multibuild: cannot build multiple packages")
-		}
-	}
+func doMultibuild(args cliArgs) {
+	sources := args.sources
 
 	if len(sources) == 0 {
 		var err error
-		sources, err = sourcesList(packagePath)
+		sources, err = sourcesList(args.packagePath)
 		if err != nil {
 			fatal("multibuild: failed to discover sources: %s", err)
 		}
@@ -191,10 +89,10 @@ func main() {
 		fatal("multibuild: failed to build target list: %s", err)
 	}
 
-	if displayConfig {
+	if args.displayConfig {
 		displayConfigAndExit(opts)
 	}
-	if displayTargets {
+	if args.displayTargets {
 		displayTargetsAndExit(targets)
 	}
 
@@ -202,7 +100,7 @@ func main() {
 	// We want to stay out of the way here.
 	// TODO: But this might be a confusing mistake to fall over if you set it in .bashrc etc..
 	if os.Getenv("GOOS") != "" || os.Getenv("GOARCH") != "" {
-		runBuild(args, "", "")
+		runBuild(args.goBuildArgs, "", "")
 		return
 	}
 
@@ -210,7 +108,7 @@ func main() {
 	sem := make(chan struct{}, 4) // limit max parallel builds to save sanity...
 
 	formattedOutput := string(opts.Output)
-	formattedOutput = strings.ReplaceAll(formattedOutput, "${TARGET}", output)
+	formattedOutput = strings.ReplaceAll(formattedOutput, "${TARGET}", args.output)
 
 	for _, t := range targets {
 		parts := strings.Split(string(t), "/")
@@ -225,19 +123,19 @@ func main() {
 		}
 
 		buildArgs := []string{"-o", out}
-		buildArgs = append(buildArgs, args...)
+		buildArgs = append(buildArgs, args.goBuildArgs...)
 
 		wg.Add(1) // acquire for global
 		go func(goos, goarch string, buildArgs []string) {
-			if verbose {
+			if args.verbose {
 				fmt.Fprintf(os.Stderr, "%s/%s: waiting\n", goos, goarch)
 			}
 			sem <- struct{}{} // acquire for job
-			if verbose {
+			if args.verbose {
 				fmt.Fprintf(os.Stderr, "%s/%s: building\n", goos, goarch)
 			}
 			runBuild(buildArgs, goos, goarch)
-			if verbose {
+			if args.verbose {
 				fmt.Fprintf(os.Stderr, "%s/%s: done\n", goos, goarch)
 			}
 			<-sem     // release for job
