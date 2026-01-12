@@ -61,12 +61,13 @@ type cliArgs struct {
 	// (e.g. multibuild foo/main.go)
 	sources []string
 
+	displayUsage   bool
 	displayConfig  bool
 	displayTargets bool
 	verbose        bool
 }
 
-func main() {
+func buildArgs() (cliArgs, error) {
 	args := cliArgs{}
 	args.self = filepath.Base(os.Args[0])
 	args.goBuildArgs = os.Args[1:]
@@ -83,7 +84,8 @@ func main() {
 			args.output = strings.TrimPrefix(arg, "-o=")
 
 		case arg == "-h" || arg == "--help":
-			displayUsageAndExit(args.self)
+			args.displayUsage = true
+
 		case arg == "-v":
 			args.verbose = true
 		case arg == "--multibuild-configuration":
@@ -91,7 +93,7 @@ func main() {
 		case arg == "--multibuild-targets":
 			args.displayTargets = true
 		case strings.HasPrefix(arg, "--multibuild"):
-			fatal("multibuild: unrecognized argument %q", arg)
+			return cliArgs{}, fmt.Errorf("multibuild: unrecognized argument %q", arg)
 		case !strings.HasPrefix(arg, "-"):
 			if args.packagePath != "" {
 				// For now, I'm cowardly refusing to handle this.
@@ -105,7 +107,7 @@ func main() {
 				//
 				// We will need to discover sources for each package, scan independently,
 				// and build independently.
-				fatal("multibuild: cannot build multiple packages")
+				return cliArgs{}, fmt.Errorf("multibuild: cannot build multiple packages")
 			}
 			args.packagePath = arg
 		}
@@ -137,6 +139,19 @@ func main() {
 				args.output = filepath.Base(t)
 			}
 		}
+	}
+
+	return args, nil
+}
+
+func main() {
+	args, err := buildArgs()
+	if err != nil {
+		fatal(err.Error())
+	}
+
+	if args.displayUsage {
+		displayUsageAndExit(args.self)
 	}
 
 	doMultibuild(args)
