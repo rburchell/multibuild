@@ -511,3 +511,88 @@ func TestValidateFilters_Invalid(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateFormatString(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+		outputs []format
+	}{
+		{
+			name:    "single (raw)",
+			input:   "raw",
+			wantErr: false,
+			outputs: []format{formatRaw},
+		},
+		{
+			name:    "single (zip)",
+			input:   "zip",
+			wantErr: false,
+			outputs: []format{formatZip},
+		},
+		{
+			name:    "single (tgz)",
+			input:   "tar.gz",
+			wantErr: false,
+			outputs: []format{formatTgz},
+		},
+		{
+			name:    "all",
+			input:   "raw,zip,tar.gz",
+			wantErr: false,
+			outputs: []format{formatRaw, formatZip, formatTgz},
+		},
+		{
+			name:    "empty",
+			input:   "",
+			wantErr: true,
+			outputs: []format{},
+		},
+		{
+			name:    "all-unknown",
+			input:   "wat",
+			wantErr: true,
+			outputs: []format{},
+		},
+		{
+			name:    "partly-unknown",
+			input:   "zip,wat",
+			wantErr: true,
+			outputs: []format{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := validateFormatString(tt.input)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil (output=%v)", out)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			equalFormats := func(a, b []format) bool {
+				if len(a) != len(b) {
+					return false
+				}
+				for i := range a {
+					if a[i] != b[i] {
+						return false
+					}
+				}
+				return true
+			}
+
+			if !equalFormats(out, tt.outputs) {
+				t.Fatalf("output mismatch: got %q, want %q", out, tt.input)
+			}
+		})
+	}
+}
