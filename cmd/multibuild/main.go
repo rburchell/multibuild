@@ -6,6 +6,7 @@
 package main
 
 //go:multibuild:output=bin/${TARGET}-${GOOS}-${GOARCH}
+//go:multibuild:format=raw,tar.gz,zip
 
 import (
 	"fmt"

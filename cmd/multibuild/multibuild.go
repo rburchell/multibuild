@@ -5,8 +5,11 @@
 package main
 
 import (
+	"archive/tar"
+	"archive/zip"
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -126,21 +129,67 @@ func doMultibuild(args cliArgs) {
 		buildArgs = append(buildArgs, args.goBuildArgs...)
 
 		wg.Add(1) // acquire for global
-		go func(goos, goarch string, buildArgs []string) {
+		go func(out, goos, goarch string, buildArgs []string) {
 			if args.verbose {
 				fmt.Fprintf(os.Stderr, "%s/%s: waiting\n", goos, goarch)
 			}
 			sem <- struct{}{} // acquire for job
 			if args.verbose {
-				fmt.Fprintf(os.Stderr, "%s/%s: building\n", goos, goarch)
+				fmt.Fprintf(os.Stderr, "%s/%s: build\n", goos, goarch)
 			}
 			runBuild(buildArgs, goos, goarch)
-			if args.verbose {
-				fmt.Fprintf(os.Stderr, "%s/%s: done\n", goos, goarch)
+			if len(opts.Format) > 1 {
+				if args.verbose {
+					fmt.Fprintf(os.Stderr, "%s/%s: archive\n", goos, goarch)
+				}
+
+				// FIXME: windows case out has .exe, and we don't want that here.
+				for _, format := range opts.Format {
+					fmt.Printf("Producing format %s\n", format)
+					switch format {
+					case formatRaw:
+						// already built (obvs)..
+					case formatZip:
+						arPath := out + ".zip"
+						fmt.Printf("arPath %s\n", arPath)
+						f, _ := os.Create(arPath)
+						defer f.Close()
+
+						zw := zip.NewWriter(f)
+						defer zw.Close()
+
+						w, _ := zw.Create(out)
+						bin, _ := os.Open(out)
+						defer bin.Close()
+						_, _ = io.Copy(w, bin)
+					case formatTgz:
+						arPath := out + ".tar.gz"
+						fmt.Printf("arPath %s\n", arPath)
+						f, _ := os.Create(arPath)
+						defer f.Close()
+
+						gz := gzip.NewWriter(f)
+						defer gz.Close()
+
+						tw := tar.NewWriter(gz)
+						defer tw.Close()
+
+						st, err := os.Stat(out)
+						fmt.Printf("St: %v err %v\n", st, err)
+						bin, _ := os.Open(out)
+						defer bin.Close()
+
+						hdr := &tar.Header{Name: out, Mode: 0644, Size: st.Size()}
+						tw.WriteHeader(hdr)
+						_, _ = io.Copy(tw, bin)
+					}
+				}
+
+				// FIXME: If raw isn't wanted, we need to subsequently remove it here.
 			}
 			<-sem     // release for job
 			wg.Done() // release for global
-		}(goos, goarch, buildArgs)
+		}(out, goos, goarch, buildArgs)
 	}
 
 	wg.Wait()
