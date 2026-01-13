@@ -31,6 +31,7 @@ func displayConfigAndExit(opts options) {
 	fmt.Fprintf(os.Stderr, "//go:multibuild:include=%s\n", strings.Join(mapSlice(opts.Include, func(f filter) string { return string(f) }), ","))
 	fmt.Fprintf(os.Stderr, "//go:multibuild:exclude=%s\n", strings.Join(mapSlice(opts.Exclude, func(f filter) string { return string(f) }), ","))
 	fmt.Fprintf(os.Stderr, "//go:multibuild:output=%s\n", opts.Output)
+	fmt.Fprintf(os.Stderr, "//go:multibuild:format=%s\n", strings.Join(mapSlice(opts.Format, func(f format) string { return string(f) }), ","))
 	os.Exit(0)
 }
 

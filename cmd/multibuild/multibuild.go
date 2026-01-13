@@ -5,14 +5,18 @@
 package main
 
 import (
+	"archive/tar"
+	"archive/zip"
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -117,30 +121,123 @@ func doMultibuild(args cliArgs) {
 		out := formattedOutput
 		out = strings.ReplaceAll(out, "${GOOS}", goos)
 		out = strings.ReplaceAll(out, "${GOARCH}", goarch)
+		outBin := out
 
 		if goos == "windows" {
-			out += ".exe"
+			outBin += ".exe"
 		}
 
-		buildArgs := []string{"-o", out}
+		buildArgs := []string{"-o", outBin}
 		buildArgs = append(buildArgs, args.goBuildArgs...)
 
 		wg.Add(1) // acquire for global
-		go func(goos, goarch string, buildArgs []string) {
+		go func(out, outBin, goos, goarch string, buildArgs []string) {
 			if args.verbose {
 				fmt.Fprintf(os.Stderr, "%s/%s: waiting\n", goos, goarch)
 			}
 			sem <- struct{}{} // acquire for job
 			if args.verbose {
-				fmt.Fprintf(os.Stderr, "%s/%s: building\n", goos, goarch)
+				fmt.Fprintf(os.Stderr, "%s/%s: build\n", goos, goarch)
 			}
 			runBuild(buildArgs, goos, goarch)
 			if args.verbose {
-				fmt.Fprintf(os.Stderr, "%s/%s: done\n", goos, goarch)
+				fmt.Fprintf(os.Stderr, "%s/%s: archive\n", goos, goarch)
+			}
+
+			for _, format := range opts.Format {
+				switch format {
+				case formatRaw:
+					// already built (obvs)..
+				case formatZip:
+					arPath := out + ".zip"
+					f, err := os.Create(arPath)
+					defer f.Close()
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s/%s: failed to create archive %s: %s\n", goos, goarch, arPath, err)
+						os.Exit(1)
+					}
+
+					zw := zip.NewWriter(f)
+					defer zw.Close()
+
+					w, err := zw.Create(outBin)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s/%s: failed to create header %s: %s\n", goos, goarch, arPath, err)
+						os.Exit(1)
+					}
+
+					st, err := os.Stat(outBin)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s/%s: failed to stat raw %s: %s\n", goos, goarch, outBin, err)
+						os.Exit(1)
+					}
+					bin, err := os.Open(outBin)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s/%s: failed to open raw %s: %s\n", goos, goarch, outBin, err)
+						os.Exit(1)
+					}
+					defer bin.Close()
+					sz, err := io.Copy(w, bin)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s/%s: failed to copy %s: %s\n", goos, goarch, outBin, err)
+						os.Exit(1)
+					}
+					if sz != st.Size() {
+						fmt.Fprintf(os.Stderr, "%s/%s: size mismatch in copy of %s: (%d vs %d)\n", goos, goarch, outBin, sz, st.Size())
+						os.Exit(1)
+					}
+				case formatTgz:
+					arPath := out + ".tar.gz"
+					f, err := os.Create(arPath)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s/%s: failed to create archive %s: %s\n", goos, goarch, arPath, err)
+						os.Exit(1)
+					}
+					defer f.Close()
+
+					gz := gzip.NewWriter(f)
+					defer gz.Close()
+
+					tw := tar.NewWriter(gz)
+					defer tw.Close()
+
+					st, err := os.Stat(outBin)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s/%s: failed to stat raw %s: %s\n", goos, goarch, outBin, err)
+						os.Exit(1)
+					}
+					bin, err := os.Open(outBin)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s/%s: failed to open raw %s: %s\n", goos, goarch, outBin, err)
+						os.Exit(1)
+					}
+					defer bin.Close()
+
+					hdr := &tar.Header{Name: outBin, Mode: 0755, Size: st.Size()}
+					tw.WriteHeader(hdr)
+					sz, err := io.Copy(tw, bin)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s/%s: failed to copy %s: %s\n", goos, goarch, outBin, err)
+						os.Exit(1)
+					}
+					if sz != st.Size() {
+						fmt.Fprintf(os.Stderr, "%s/%s: size mismatch in copy of %s: (%d vs %d)\n", goos, goarch, outBin, sz, st.Size())
+						os.Exit(1)
+					}
+				}
+			}
+
+			// If the format list specifically excluded raw, remove the binary.
+			// I don't know why one would want to do this, but nevertheless...
+			if !slices.Contains(opts.Format, formatRaw) {
+				err := os.Remove(outBin)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%s/%s: failed to remove unwanted raw output %s: %s\n", goos, goarch, outBin, err)
+				}
 			}
 			<-sem     // release for job
 			wg.Done() // release for global
-		}(goos, goarch, buildArgs)
+		}(out, outBin, goos, goarch, buildArgs)
 	}
 
 	wg.Wait()

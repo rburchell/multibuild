@@ -110,6 +110,7 @@ func main() {
 			expectedConfig: `//go:multibuild:include=linux/amd64,linux/arm64
 //go:multibuild:exclude=android/*,ios/*
 //go:multibuild:output=${TARGET}-${GOOS}-${GOARCH}
+//go:multibuild:format=raw
 `,
 			expectedTargets: "linux/amd64\nlinux/arm64\n",
 		},
@@ -124,6 +125,7 @@ func main() {
 			expectedConfig: `//go:multibuild:include=*/arm64
 //go:multibuild:exclude=android/arm64,darwin/arm64,freebsd/arm64,ios/arm64,netbsd/arm64,openbsd/arm64,windows/arm64,android/*,ios/*
 //go:multibuild:output=${TARGET}-${GOOS}-${GOARCH}
+//go:multibuild:format=raw
 `,
 			expectedTargets: "linux/arm64\n",
 		},
@@ -139,6 +141,75 @@ func main() {
 			expectedConfig: `//go:multibuild:include=linux/amd64,linux/arm64
 //go:multibuild:exclude=android/*,ios/*
 //go:multibuild:output=bin/${TARGET}-hello-${GOOS}-world-${GOARCH}
+//go:multibuild:format=raw
+`,
+			expectedTargets: "linux/amd64\nlinux/arm64\n",
+		},
+		{
+			name: "format=raw",
+			config: `//go:multibuild:include=linux/amd64,linux/arm64
+//go:multibuild:format=raw
+`,
+			expectedBinaries: []string{
+				"${TARGET}-linux-amd64",
+				"${TARGET}-linux-arm64",
+			},
+			expectedConfig: `//go:multibuild:include=linux/amd64,linux/arm64
+//go:multibuild:exclude=android/*,ios/*
+//go:multibuild:output=${TARGET}-${GOOS}-${GOARCH}
+//go:multibuild:format=raw
+`,
+			expectedTargets: "linux/amd64\nlinux/arm64\n",
+		},
+		{
+			name: "format=zip",
+			config: `//go:multibuild:include=linux/amd64,linux/arm64
+//go:multibuild:format=zip
+`,
+			expectedBinaries: []string{
+				"${TARGET}-linux-amd64.zip",
+				"${TARGET}-linux-arm64.zip",
+			},
+			expectedConfig: `//go:multibuild:include=linux/amd64,linux/arm64
+//go:multibuild:exclude=android/*,ios/*
+//go:multibuild:output=${TARGET}-${GOOS}-${GOARCH}
+//go:multibuild:format=zip
+`,
+			expectedTargets: "linux/amd64\nlinux/arm64\n",
+		},
+		{
+			name: "format=tar.gz",
+			config: `//go:multibuild:include=linux/amd64,linux/arm64
+//go:multibuild:format=tar.gz
+`,
+			expectedBinaries: []string{
+				"${TARGET}-linux-amd64.tar.gz",
+				"${TARGET}-linux-arm64.tar.gz",
+			},
+			expectedConfig: `//go:multibuild:include=linux/amd64,linux/arm64
+//go:multibuild:exclude=android/*,ios/*
+//go:multibuild:output=${TARGET}-${GOOS}-${GOARCH}
+//go:multibuild:format=tar.gz
+`,
+			expectedTargets: "linux/amd64\nlinux/arm64\n",
+		},
+		{
+			name: "format=raw,zip,tar.gz",
+			config: `//go:multibuild:include=linux/amd64,linux/arm64
+//go:multibuild:format=raw,zip,tar.gz
+`,
+			expectedBinaries: []string{
+				"${TARGET}-linux-amd64",
+				"${TARGET}-linux-arm64",
+				"${TARGET}-linux-amd64.zip",
+				"${TARGET}-linux-arm64.zip",
+				"${TARGET}-linux-amd64.tar.gz",
+				"${TARGET}-linux-arm64.tar.gz",
+			},
+			expectedConfig: `//go:multibuild:include=linux/amd64,linux/arm64
+//go:multibuild:exclude=android/*,ios/*
+//go:multibuild:output=${TARGET}-${GOOS}-${GOARCH}
+//go:multibuild:format=raw,zip,tar.gz
 `,
 			expectedTargets: "linux/amd64\nlinux/arm64\n",
 		},
@@ -187,7 +258,14 @@ func main() {
 			if err != nil {
 				t.Fatalf("failed to multibuild: %v\nOutput:\n%s", err, out)
 			}
+			if len(out) != 0 {
+				t.Fatalf("unexpected output: %s", out)
+			}
 
+			// FIXME: This test has a small oversight. It was written to assert that the expected output is created.
+			// But ideally it should also be asserting that no *unexpected* output is created.
+			//
+			// An example here is that if we request format=zip, we should assert that the 'raw' binaries are removed.
 			for _, want := range test.expectedBinaries {
 				want := strings.ReplaceAll(want, "${TARGET}", filepath.Base(testTmp))
 				if _, err := os.Stat(filepath.Join(testTmp, want)); err != nil {

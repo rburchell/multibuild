@@ -82,13 +82,27 @@ This configuration will use the same naming, but place all binaries in a `bin/` 
 An `output` configuration must have all three `${TARGET}`, `${GOOS}`, `${GOARCH}`
 placeholders present, but the ordering can change.
 
-Windows, as a special case, will always have ".exe" appended to the filename.
+Windows, as a special case, will always have ".exe" appended to the filename of a raw binary.
 
 The `TARGET` placeholder expands to the default build target name that `go build` would produce.
 The `GOOS` placeholder is expands to the `GOOS` under build.
 The `GOARCH` placeholder expands to the `GOARCH` under build.
 
 Only a single `output` directive may be found in a package.
+
+## Output formats
+
+multibuild can produce several types of output.
+
+`//go:multibuild:format=raw,zip,tar.gz`
+
+The list of formats is comma separated, and any of the following are supported:
+
+* `raw` - The default, the raw binary produced by `go build`.
+* `zip` - A zip archive of the raw binary.
+* `tar.gz` - A tar.gz'd archive of the raw binary.
+
+Only a single `format` directive may be found in a package.
 
 # Differences to `go build`
 
