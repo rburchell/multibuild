@@ -28,10 +28,22 @@ type target string
 // e.g. ${TARGET}_${GOOS}_${GOARCH}
 type outputTemplate string
 
+// raw, tar.gz, ...
+type format string
+
+const (
+	formatRaw format = "raw"
+	formatZip        = "zip"
+	formatTgz        = "tar.gz"
+)
+
 // All options for multibuild go here..
 type options struct {
-	// Output format
+	// Output filename format
 	Output outputTemplate
+
+	// Output formats to produce
+	Format []format
 
 	// Targets to include
 	Include []filter
@@ -171,6 +183,30 @@ func validateTemplate(s string) (outputTemplate, error) {
 	return outputTemplate(s), nil
 }
 
+// Validates that the 's' is a list of formats.
+func validateFormatString(s string) ([]format, error) {
+	if s == "" {
+		return nil, fmt.Errorf("empty string is not a valid format")
+	}
+
+	var allowedFormats = map[format]struct{}{
+		formatRaw: {},
+		formatZip: {},
+		formatTgz: {},
+	}
+
+	var formats []format
+	formatStrs := strings.SplitSeq(s, ",")
+	for formatStr := range formatStrs {
+		format := format(formatStr)
+		if _, ok := allowedFormats[format]; !ok {
+			return nil, fmt.Errorf("format %q is not valid", formatStr)
+		}
+		formats = append(formats, format)
+	}
+	return formats, nil
+}
+
 func validateFilterString(s string) ([]filter, error) {
 	isAlphaNum := func(b byte) bool {
 		return (b >= 'a' && b <= 'z') ||
@@ -274,6 +310,19 @@ func scanBuildPath(reader io.Reader, path string) (options, error) {
 				return options{}, fmt.Errorf("%s:%d: go:multibuild:output=%s is invalid: %s", path, i, rest, err)
 			}
 			opts.Output = parsed
+		} else if strings.HasPrefix(line, "//go:multibuild:format=") {
+			if dlog {
+				log.Printf("Found format: %s:%d: %s", path, i, line)
+			}
+			rest := strings.TrimPrefix(line, "//go:multibuild:format=")
+			if len(opts.Format) > 0 {
+				return options{}, fmt.Errorf("%s:%d: go:multibuild:format was already set to %s, found: %q here", path, i, opts.Format, rest)
+			}
+			parsed, err := validateFormatString(rest)
+			if err != nil {
+				return options{}, fmt.Errorf("%s:%d: go:multibuild:format=%s is invalid: %s", path, i, rest, err)
+			}
+			opts.Format = parsed
 		} else if strings.HasPrefix(line, "//go:multibuild:include=") {
 			if dlog {
 				log.Printf("Found include: %s:%d: %s", path, i, line)
@@ -321,6 +370,11 @@ func scanBuildDir(sources []string) (options, error) {
 		} else if len(topts.Output) > 0 {
 			opts.Output = topts.Output
 		}
+		if len(opts.Format) > 0 && len(topts.Format) > 0 {
+			return options{}, fmt.Errorf("%s: format= already set elsewhere", path)
+		} else if len(topts.Format) > 0 {
+			opts.Format = topts.Format
+		}
 		opts.Exclude = append(opts.Exclude, topts.Exclude...)
 		opts.Include = append(opts.Include, topts.Include...)
 	}
@@ -328,6 +382,9 @@ func scanBuildDir(sources []string) (options, error) {
 	// By default, we include everything.
 	if len(opts.Include) == 0 {
 		opts.Include = []filter{"*/*"}
+	}
+	if len(opts.Format) == 0 {
+		opts.Format = []format{formatRaw}
 	}
 
 	// These require CGO_ENABLED=1, which I don't want to touch right now.
