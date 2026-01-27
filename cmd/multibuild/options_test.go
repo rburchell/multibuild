@@ -180,18 +180,11 @@ func TestScanBuildPath(t *testing.T) {
 	}
 
 	equalOptions := func(a, b options) bool {
-		if len(a.Include) != len(b.Include) || len(a.Exclude) != len(b.Exclude) {
+		if !slices.Equal(a.Include, b.Include) {
 			return false
 		}
-		for i := range a.Include {
-			if a.Include[i] != b.Include[i] {
-				return false
-			}
-		}
-		for i := range a.Exclude {
-			if a.Exclude[i] != b.Exclude[i] {
-				return false
-			}
+		if !slices.Equal(a.Exclude, b.Exclude) {
+			return false
 		}
 		return true
 	}
@@ -578,19 +571,7 @@ func TestValidateFormatString(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			equalFormats := func(a, b []format) bool {
-				if len(a) != len(b) {
-					return false
-				}
-				for i := range a {
-					if a[i] != b[i] {
-						return false
-					}
-				}
-				return true
-			}
-
-			if !equalFormats(out, tt.outputs) {
+			if !slices.Equal(out, tt.outputs) {
 				t.Fatalf("output mismatch: got %q, want %q", out, tt.input)
 			}
 		})
